@@ -1,5 +1,7 @@
 import torch, matplotlib.pyplot as plt
 
+# By counting
+
 with open("names.txt", "r") as file:
   data = file.read().split()
 
@@ -21,7 +23,8 @@ for word in data:
     N[ix1][ix2] += 1
 
 ## norminalised bigram
-P = N.float() / torch.sum(N, 1, True)
+P = N.float() + 1 # smoothing
+P = P / torch.sum(P, 1, True)
 
 # sampling
 words = []
@@ -31,10 +34,10 @@ for i in range(1000):
   while True:
     p = P[ix]
     ix = torch.multinomial(p, 1, replacement=True).item()
-    out.append(itos[ix])
     if ix == 0:
       words.append("".join(out))
       break
+    out.append(itos[ix])
 
 # Calculating the loss
 loss_likelyhood = 0
