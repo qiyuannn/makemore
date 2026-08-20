@@ -28,20 +28,18 @@ W = torch.randn((27, 27), requires_grad=True)
 
 x_encoded = torch.nn.functional.one_hot(xs, num_classes=27).float()
 
-for k in range(1000):
+for k in range(10):
   # foward pass 
   logits = x_encoded @ W # log counts
   counts = logits.exp() # softmax
   probs = counts / torch.sum(counts, 1, keepdim=True)
-  neg_loss_likelyhood = -probs[torch.arange(len(ys)), ys].log().mean() + 0.01 * (W ** 2).mean() # with smoothing 
+  #neg_loss_likelyhood = -probs[torch.arange(len(ys)), ys].log().mean() + 0.01 * (W ** 2).mean() # with smoothing 
+  neg_loss_likelyhood = torch.nn.functional.cross_entropy(logits, ys) + 0.01 * (W ** 2).mean()
 
   # backward pass
   W.grad = None
   neg_loss_likelyhood.backward()
 
   W.data += -10 * W.grad
-
-  if k == 1000 - 1:
-    print(neg_loss_likelyhood)
 
   
