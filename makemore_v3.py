@@ -1,7 +1,11 @@
-import torch, matplotlib.pyplot as plt
+import math
+import torch
+import torch.nn.functional as F
 
 with open("names.txt", "r") as file:
   data = file.read().split()
+
+data = [data[i] for i in torch.randperm(len(data)).tolist()]
 
 chars = ["/"] + sorted(list(set("".join(data))))
 len_chars = len(chars)
@@ -14,7 +18,7 @@ encode = lambda str: [stoi[x] for x in str]
 decode = lambda lst: "".join([itos[x] for x in lst])
 
 # building the dataset
-block_size = 3
+block_size = 5
 
 def build_data(data):
   x, y = [], []
@@ -34,24 +38,28 @@ X_val, Y_val = build_data(data[n1: n2])
 X_test, Y_test = build_data(data[n2:])
 
 # neural net parameters
-dimensions = 10
+dimensions = 16
+hidden_units = 300
+max_steps = 100000
 
-C = torch.randn((len_chars, dimensions), requires_grad=True)
-W1 = torch.randn((dimensions * block_size, 200), requires_grad=True)
-h1 = torch.randn(200, requires_grad=True)
-W2 = torch.randn((200, len_chars), requires_grad=True)
-h2 = torch.randn(len_chars, requires_grad=True)
+C = torch.randn((len_chars, dimensions))
+W1 = torch.randn((dimensions * block_size, hidden_units)) * (5/3) / math.sqrt(dimensions * block_size)
+h1 = torch.randn(hidden_units) * 0.01
+W2 = torch.randn((hidden_units, len_chars)) * 0.01
+h2 = torch.zeros(len_chars)
 parameters = [C, W1, h1, W2, h2]
+for p in parameters:
+  p.requires_grad = True
 
-for i in range(200000):
+for i in range(max_steps):
   #foward pass
-  ix = torch.randint(0, X_train.shape[0], (32,))
+  ix = torch.randint(0, X_train.shape[0], (128,))
   emb = C[X_train[ix]]
   h = torch.tanh(emb.view(-1, dimensions * block_size) @ W1 + h1)
   logits = h @ W2 + h2
 
   #loss
-  loss = torch.nn.functional.cross_entropy(logits, Y_train[ix])
+  loss = F.cross_entropy(logits, Y_train[ix])
 
   #backward pass
   for p in parameters:
@@ -59,18 +67,21 @@ for i in range(200000):
 
   loss.backward()
 
-
-  lr = 0.01 if i < 100000 else 0.01
+  lr = 0.1 if i < int(max_steps * 0.75) else 0.01
   for p in parameters:
     p.data -= lr * p.grad 
 
   if i % 10000 == 0:
-    print(f"interation: {i} loss: {loss}")
+    print(f"iteration: {i} loss: {loss.item():.4f}")
 
-
-with torch.no_grad():
-  emb = C[X_val]
+@torch.no_grad()
+def split_loss(split, X, Y):
+  emb = C[X]
   h = torch.tanh(emb.view(-1, block_size * dimensions) @ W1 + h1)
   logits = h @ W2 + h2
-  loss = torch.nn.functional.cross_entropy(logits, Y_val)
-  print(f"val loss: {loss}")
+  loss = F.cross_entropy(logits, Y)
+  print(f"{split} loss: {loss.item():.4f}")
+
+split_loss("train", X_train, Y_train)
+split_loss("val", X_val, Y_val)
+split_loss("test", X_test, Y_test)
