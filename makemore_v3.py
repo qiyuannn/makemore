@@ -44,10 +44,15 @@ max_steps = 100000
 
 C = torch.randn((len_chars, dimensions))
 W1 = torch.randn((dimensions * block_size, hidden_units)) * (5/3) / math.sqrt(dimensions * block_size)
-h1 = torch.randn(hidden_units) * 0.01
 W2 = torch.randn((hidden_units, len_chars)) * 0.01
 h2 = torch.zeros(len_chars)
-parameters = [C, W1, h1, W2, h2]
+bn_gain = torch.ones((1, hidden_units))
+bn_bias = torch.zeros(1, hidden_units)
+
+bn_mean_running = torch.zeros((1, hidden_units))
+bn_std_running = torch.ones((1, hidden_units))
+
+parameters = [C, W1, W2, h2, bn_gain, bn_bias]
 for p in parameters:
   p.requires_grad = True
 
@@ -55,7 +60,17 @@ for i in range(max_steps):
   #foward pass
   ix = torch.randint(0, X_train.shape[0], (128,))
   emb = C[X_train[ix]]
-  h = torch.tanh(emb.view(-1, dimensions * block_size) @ W1 + h1)
+  ## linear layer
+  hpreact = emb.view(-1, dimensions * block_size) @ W1 
+  ## batch norminalisation
+  bn_mean_curr = hpreact.mean(0, keepdim=True)
+  bn_std_curr = hpreact.std(0, keepdim=True)
+  hpreact = bn_gain * (hpreact - bn_mean_curr) / bn_std_curr + bn_bias
+  with torch.no_grad():
+    bn_mean_running = 0.999 * bn_mean_running + 0.001 * bn_mean_curr
+    bn_std_running = 0.999 * bn_std_running + 0.001 * bn_std_curr
+  ## Non linear layer
+  h = torch.tanh(hpreact)
   logits = h @ W2 + h2
 
   #loss
@@ -64,7 +79,6 @@ for i in range(max_steps):
   #backward pass
   for p in parameters:
     p.grad = None
-
   loss.backward()
 
   lr = 0.1 if i < int(max_steps * 0.75) else 0.01
@@ -77,7 +91,9 @@ for i in range(max_steps):
 @torch.no_grad()
 def split_loss(split, X, Y):
   emb = C[X]
-  h = torch.tanh(emb.view(-1, block_size * dimensions) @ W1 + h1)
+  hpreact = emb.view(-1, dimensions * block_size) @ W1
+  hpreact = bn_gain * (hpreact - bn_mean_running) / bn_std_running + bn_bias
+  h = torch.tanh(hpreact)
   logits = h @ W2 + h2
   loss = F.cross_entropy(logits, Y)
   print(f"{split} loss: {loss.item():.4f}")
